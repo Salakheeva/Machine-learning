@@ -1,0 +1,119 @@
+Prediction Assignment Writeup
+========================================================
+
+The goal of the project is to predict the manner in which person did the exercise. This is the "classe" variable in the training set. Use of any of the other variables to predict with is allowed.
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data and project plan
+
+For prediction data was splitted, and you can download in here:
+
+ - [Training data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+ 
+ - [Test data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+ 
+ **Cross validation** will be performed in following steps:
+ 
+1. Load data and reduce covariates.
+
+2. Split training set into training part and test part.
+
+3. Build a model on the training part.
+
+4. Evaluate model on the test part.
+
+5. Estimate error of the model.
+
+6. Predict classe values for test data.
+ 
+## Data download and processing
+
+In the code below I download required libraries and datasets: test and training.
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(doParallel)
+set.seed(123)
+train.data<-read.csv("./pml-training.csv")
+test.data<-read.csv("./pml-testing.csv")
+dim(train.data)
+```
+
+Next step is to decreise the number of variables.There are 160 columns in train data. I did data cleaning in several steps:
+
+1. Deleted columns with a major of not available data and blanks.
+
+```{r}
+train.data<-train.data[,sapply(train.data, function(x){sum(is.na(x)|x=="")})/nrow(train.data)<0.9]
+dim(train.data)
+```
+
+2. Excluded data with a near zero variance.
+
+```{r}
+NZV<-nearZeroVar(train.data,saveMetrics=T)$nzv
+train.data<-train.data[,!NZV]
+dim(train.data)
+```
+
+3. Exctract highly correlated variables.
+
+```{r}
+nums<-sapply(train.data,is.numeric)
+corr <- cor(na.omit(train.data[,nums]))
+diag(corr)<-0
+BigCor<-findCorrelation(corrMatrix, cutoff = .80, verbose = F)
+train.data<-train.data[,-BigCor]
+dim(train.data)
+```
+
+4. Remove obvious unnecessary columns.
+
+```{r}
+train.data = train.data[,-1]#column x- number of rows
+```
+
+Finally, I got a data set with 46 columns.
+
+## Training data division
+
+R code below dividing training data on training and testing parts. 80% of data going to training part, the rest to testing.
+
+```{r}
+train<-createDataPartition(train.data$classe,p=0.8,list=F)
+train.train<-train.data[train,]
+test.train<-train.data[-train,]
+```
+
+## Model building
+
+As a method for prediction I choose random forest. I used a special package for it to increase the speed of processing. Caret package do this method very long. Also I made this process parallel.
+
+```{r message=FALSE, warning=FALSE}
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+library(randomForest)
+Model<-randomForest(classe~.,data=train.train,ntree=100, importance=TRUE)
+stopCluster(cl)
+```
+
+## Accuracy estimation
+
+For prediction I applied testing part from training dataset. Then I compaired predicted results with actual data and estemated model. Accuracy of the model is equal to 99,9%.
+
+```{r}
+test <- predict(Model, newdata=test.train)
+confusionMatrix(test,test.train$classe)
+```
+
+## Prediction
+
+Now it is time to use model for prediction on test dataset. Results you can see below.
+
+```{r}
+Prediction <- predict(Model, newdata=test.data,type="class")
+Prediction
+```
